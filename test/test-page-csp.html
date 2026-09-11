@@ -1,0 +1,21 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>GPTGirl CSP Test Page</title>
+<!-- 模拟严格 CSP：style-src 'self' 会拦截注入的内联 <style>，用于验证 adoptedStyleSheets 回退路径 -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self'">
+<style>
+  html, body { margin: 0; height: 100%; }
+  body > #root { background: #ffffff; height: 100%; font-family: "Segoe UI", sans-serif; color: #111; }
+  .bar { background: #27272a; color: #fff; padding: 8px 16px; }
+  .panel { background: #f4f4f5; margin: 16px; padding: 16px; border-radius: 8px; }
+</style>
+</head>
+<body>
+  <div id="root">
+    <div class="bar">CSP 严格模式测试页</div>
+    <div class="panel">Panel — 本页自身的内联样式也会被 CSP 拦截（预期行为）</div>
+  </div>
+</body>
+</html>
