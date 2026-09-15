@@ -1,5 +1,5 @@
 import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, resolve, toNamespacedPath } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
@@ -36,6 +36,30 @@ export function pluginEnabledFromToml(text, pluginId = PLUGIN_ID) {
 export function pluginInstalledFromToml(text, pluginId = PLUGIN_ID) {
   const header = new RegExp(`^[ \\t]*\\[plugins\\.${regexEscape(JSON.stringify(pluginId))}\\][ \\t]*(?:#.*)?$`, 'm');
   return header.test(String(text));
+}
+
+/**
+ * 定点更新已登记 Marketplace 的本地路径；若尚未登记则交给 Codex CLI 创建。
+ * 使用 TOML 基本字符串保存路径，以正确转义 Windows 反斜杠。
+ */
+export function setMarketplaceSourceInToml(text, marketplaceSource, marketplaceName = MARKETPLACE_NAME) {
+  const source = String(text);
+  const name = `(?:${regexEscape(marketplaceName)}|${regexEscape(JSON.stringify(marketplaceName))}|${regexEscape(`'${marketplaceName}'`)})`;
+  const header = new RegExp(`^[ \\t]*\\[marketplaces\\.${name}\\][ \\t]*(?:#.*)?$`, 'm');
+  const match = header.exec(source);
+  if (!match) return source;
+
+  const bodyStart = match.index + match[0].length;
+  const after = source.slice(bodyStart);
+  const nextHeader = /^[ \t]*\[/m.exec(after);
+  const bodyEnd = bodyStart + (nextHeader ? nextHeader.index : after.length);
+  const body = source.slice(bodyStart, bodyEnd);
+  const sourceLine = /^([ \t]*)(?:source|"source"|'source')[ \t]*=[ \t]*(?:"(?:\\.|[^"\\])*"|'[^']*')([ \t]*(?:#.*)?)$/mi;
+  const encodedSource = JSON.stringify(String(marketplaceSource));
+  const nextBody = sourceLine.test(body)
+    ? body.replace(sourceLine, `$1source = ${encodedSource}$2`)
+    : `${body.replace(/\s*$/, '')}\nsource = ${encodedSource}\n`;
+  return source.slice(0, bodyStart) + nextBody + source.slice(bodyEnd);
 }
 
 /** 读取磁盘上的当前 GPTGirl 插件开关；文件暂时不可读时安全地视为停用。 */
@@ -84,6 +108,18 @@ export function setPluginEnabledInToml(text, enabled, pluginId = PLUGIN_ID) {
   return source.slice(0, bodyStart) + nextBody + source.slice(bodyEnd);
 }
 
+/** 原子替换 Codex 配置文件，避免留下半写入内容。 */
+function replaceConfig(configPath, source, next) {
+  if (next === source) return;
+  const temporary = `${configPath}.gptgirl-${process.pid}.tmp`;
+  try {
+    writeFileSync(temporary, next, { encoding: 'utf8', flag: 'wx' });
+    renameSync(temporary, configPath);
+  } finally {
+    try { rmSync(temporary, { force: true }); } catch {}
+  }
+}
+
 /** 将指定开关写入 Codex 配置文件。 */
 export function writePluginEnabled(enabled, configPath = defaultCodexConfigPath()) {
   let source = '';
@@ -93,16 +129,23 @@ export function writePluginEnabled(enabled, configPath = defaultCodexConfigPath(
     if (error?.code !== 'ENOENT') throw error;
   }
   const next = setPluginEnabledInToml(source, enabled);
-  if (next !== source) {
-    const temporary = `${configPath}.gptgirl-${process.pid}.tmp`;
-    try {
-      writeFileSync(temporary, next, { encoding: 'utf8', flag: 'wx' });
-      renameSync(temporary, configPath);
-    } finally {
-      try { rmSync(temporary, { force: true }); } catch {}
-    }
-  }
+  replaceConfig(configPath, source, next);
   return next;
+}
+
+/** 将已登记的 GPTGirl Marketplace 路径迁移到当前仓库。 */
+export function writeMarketplaceSource(marketplaceSource, configPath = defaultCodexConfigPath()) {
+  let source;
+  try {
+    source = readFileSync(configPath, 'utf8');
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false;
+    throw error;
+  }
+  const normalizedSource = toNamespacedPath(resolve(marketplaceSource));
+  const next = setMarketplaceSourceInToml(source, normalizedSource);
+  replaceConfig(configPath, source, next);
+  return next !== source;
 }
 
 const isEntry = process.argv[1]
@@ -113,7 +156,11 @@ if (isEntry) {
   if (action === 'status') console.log(readPluginEnabled() ? 'enabled' : 'disabled');
   else if (action === 'enable') writePluginEnabled(true);
   else if (action === 'disable') writePluginEnabled(false);
-  else {
+  else if (action === 'sync-marketplace') {
+    const marketplaceSource = process.argv[3];
+    if (!marketplaceSource) throw new Error('sync-marketplace 缺少仓库路径。');
+    console.log(writeMarketplaceSource(marketplaceSource) ? 'updated' : 'unchanged');
+  } else {
     console.error(`未知操作: ${action}`);
     process.exitCode = 2;
   }

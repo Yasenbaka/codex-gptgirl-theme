@@ -154,6 +154,8 @@ switch ($Action) {
 
   'plugin-install' {
     node $BuildMjs
+    node $PluginStateMjs sync-marketplace $Root | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw '迁移 GPTGirl Marketplace 路径失败。' }
     $cli = Find-DesktopCodexCli
     $markets = & $cli plugin marketplace list 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) { throw "读取 Codex Marketplace 失败：$markets" }
