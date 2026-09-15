@@ -50,27 +50,19 @@ body > [class*="bg-"],
  * 将左侧栏的毛玻璃延伸进原生标题栏，同时让应用菜单避开侧栏。
  * 侧栏宽度由 Codex 自身维护，拖动调整宽度后菜单仍会跟随。
  */
-[class*="_ApplicationMenuTopBar_"] {
-  position: relative !important;
-  isolation: isolate !important;
+aside.app-shell-left-panel {
+  top: calc(-1 * var(--height-toolbar-sm, 36px)) !important;
+  height: calc(100% + var(--height-toolbar-sm, 36px)) !important;
+  margin-bottom: calc(-1 * var(--height-toolbar-sm, 36px)) !important;
 }
 
-[class*="_ApplicationMenuTopBar_"]::before {
-  content: "" !important;
-  position: absolute !important;
-  inset-block: 0 !important;
-  inset-inline-start: 0 !important;
-  width: var(--codex-sidebar-preferred-width, 240px) !important;
-  z-index: -1 !important;
-  background-color: color-mix(in srgb, #ffffff 20%, transparent) !important;
-  -webkit-backdrop-filter: blur(24px) !important;
-  backdrop-filter: blur(24px) !important;
-  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.20) !important;
-  pointer-events: none !important;
+aside.app-shell-left-panel > .max-w-full.overflow-hidden {
+  box-sizing: border-box !important;
+  padding-top: var(--height-toolbar-sm, 36px) !important;
 }
 
-html.electron-dark [class*="_ApplicationMenuTopBar_"]::before {
-  background-color: color-mix(in srgb, #1b1d24 20%, transparent) !important;
+aside.app-shell-left-panel > [class*="group/panel-resizer"] {
+  top: 0 !important;
 }
 
 [class*="_ApplicationMenuTopBar_"] > [role="menubar"] {
