@@ -3,7 +3,8 @@
 import { Cdp, evalIn, listTargets, normalizeWsUrl, pageTargets, describeTarget } from '../adapters/codex-desktop/lib.mjs';
 
 const PORT = 9222;
-const targets = pageTargets(await listTargets(PORT));
+const targets = pageTargets(await listTargets(PORT))
+  .filter(target => String(target.url || '').startsWith('app://-/'));
 console.log('页面 targets:');
 for (const t of targets) console.log(`  - ${t.title} | ${String(t.url || '').slice(0, 70)}`);
 

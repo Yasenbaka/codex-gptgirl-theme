@@ -1,0 +1,28 @@
+{
+  "name": "gptgirl",
+  "version": "2.0.0",
+  "description": "为 Windows Codex 桌面版提供可在 Plugins 设置中启停的 GPTGirl 运行时主题。",
+  "author": {
+    "name": "Yasenbaka"
+  },
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "theme",
+    "appearance",
+    "desktop",
+    "gptgirl"
+  ],
+  "interface": {
+    "displayName": "GPTGirl",
+    "shortDescription": "Codex 桌面版背景与透明主题",
+    "longDescription": "通过本地后台代理向 Windows Codex 桌面版运行时注入主题。插件开关保存在 Codex 配置中；停用后立即移除 GPTGirl 自有样式，不修改 Codex 安装目录。",
+    "developerName": "Yasenbaka",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive"
+    ],
+    "brandColor": "#CFB35B",
+    "logo": "./assets/logo.svg"
+  }
+}

@@ -14,6 +14,7 @@
  *   1) Page.setBypassCSP + <style id="gptgirl-skin">（CSS 分块送入页面）
  *   2) 若内联样式仍被拦截 → CSSStyleSheet 构造样式表 + adoptedStyleSheets（不受 CSP 约束）
  */
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,9 +23,25 @@ import { Cdp, evalIn, listTargets, normalizeWsUrl, pageTargets, describeTarget }
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const CFG = JSON.parse(readFileSync(join(ROOT, 'gptgirl.config.json'), 'utf8'));
 const STYLE_ID = 'gptgirl-skin';
+const SHEET_MARKER = '__gptgirlSheet';
+const CSS_HASH_MARKER = '__gptgirlCssHash';
 const CHUNK = 512 * 1024;
 
 const log = (...m) => console.log(`[gptgirl ${new Date().toLocaleTimeString('zh-CN')}]`, ...m);
+
+/** Codex 自身渲染窗口使用 app://-/，内嵌浏览器网页绝不能接受主题注入。 */
+export function isCodexAppTarget(target) {
+  return String(target?.url || '').startsWith('app://-/');
+}
+
+/**
+ * 默认只返回 Codex 的 app 页面。隔离端到端测试必须显式设置
+ * `GG_ALLOW_NON_CODEX_TARGETS=1`，生产环境不会因 app 页面暂时缺席而误注入网页。
+ */
+export function selectThemeTargets(targets, { allowNonCodex = false } = {}) {
+  const pages = pageTargets(targets);
+  return allowNonCodex ? pages : pages.filter(isCodexAppTarget);
+}
 
 function parseArgs(argv) {
   const a = {
@@ -69,81 +86,126 @@ async function deliverCss(cdp, css) {
   return n;
 }
 
-const PRIMARY_EXPR = `(function () {
-  const css = window.__ggBuf || '';
-  let el = document.getElementById(${JSON.stringify(STYLE_ID)});
-  if (!el) {
-    el = document.createElement('style');
-    el.id = ${JSON.stringify(STYLE_ID)};
-    /* <style> 必须放进 <head>：直接 append 到 <html> 上时 Chromium 不会完整解析其规则 */
-    const host = document.head || document.documentElement;
-    host.appendChild(el);
-  }
-  if (el.textContent !== css) el.textContent = css;
-  const rules = el.sheet && el.sheet.cssRules ? el.sheet.cssRules.length : 0;
-  return { applied: rules > 0, rules: rules };
-})()`;
+function primaryExpression(hash) {
+  return `(function () {
+    const css = window.__ggBuf || '';
+    let el = document.getElementById(${JSON.stringify(STYLE_ID)});
+    if (!el) {
+      el = document.createElement('style');
+      el.id = ${JSON.stringify(STYLE_ID)};
+      /* <style> 必须放进 <head>：直接 append 到 <html> 上时 Chromium 不会完整解析其规则 */
+      const host = document.head || document.documentElement;
+      host.appendChild(el);
+    }
+    if (el.textContent !== css) el.textContent = css;
+    const rules = el.sheet && el.sheet.cssRules ? el.sheet.cssRules.length : 0;
+    if (rules > 0) {
+      const previous = window.${SHEET_MARKER};
+      if (previous) {
+        document.adoptedStyleSheets = Array.from(document.adoptedStyleSheets || []).filter(function (sheet) {
+          return sheet !== previous;
+        });
+        delete window.${SHEET_MARKER};
+      }
+      window.${CSS_HASH_MARKER} = ${JSON.stringify(hash)};
+    }
+    return { applied: rules > 0, rules: rules, hash: window.${CSS_HASH_MARKER} || '' };
+  })()`;
+}
 
-const FALLBACK_EXPR = `(function () {
-  const css = window.__ggBuf || '';
-  if (!css) return { applied: false, rules: 0 };
-  const sheet = new CSSStyleSheet();
-  sheet.replaceSync(css);
-  const sheets = Array.from(document.adoptedStyleSheets || []).filter(function (s) { return s && s !== sheet; });
-  document.adoptedStyleSheets = sheets.concat([sheet]);
-  window.__gptgirlAlt = true;
-  return { applied: sheet.cssRules.length > 0, rules: sheet.cssRules.length };
-})()`;
+function fallbackExpression(hash) {
+  return `(function () {
+    const css = window.__ggBuf || '';
+    if (!css) return { applied: false, rules: 0 };
+    const previous = window.${SHEET_MARKER};
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(css);
+    const sheets = Array.from(document.adoptedStyleSheets || []).filter(function (s) { return s && s !== previous; });
+    document.adoptedStyleSheets = sheets.concat([sheet]);
+    window.${SHEET_MARKER} = sheet;
+    window.${CSS_HASH_MARKER} = ${JSON.stringify(hash)};
+    return { applied: sheet.cssRules.length > 0, rules: sheet.cssRules.length, hash: window.${CSS_HASH_MARKER} };
+  })()`;
+}
 
-const CHECK_EXPR = `(function () {
-  const el = document.getElementById(${JSON.stringify(STYLE_ID)});
-  const elRules = el && el.sheet && el.sheet.cssRules ? el.sheet.cssRules.length : 0;
-  let adopted = 0;
-  const sheets = document.adoptedStyleSheets || [];
-  for (let i = 0; i < sheets.length; i++) {
-    if (sheets[i] && sheets[i].cssRules) adopted += sheets[i].cssRules.length;
-  }
-  return { present: elRules > 0 || adopted > 0 || !!window.__gptgirlAlt, elRules: elRules, adoptedRules: adopted };
-})()`;
+function checkExpression(expectedHash = '') {
+  return `(function () {
+    const el = document.getElementById(${JSON.stringify(STYLE_ID)});
+    const elRules = el && el.sheet && el.sheet.cssRules ? el.sheet.cssRules.length : 0;
+    const ownSheet = window.${SHEET_MARKER};
+    const adopted = Array.from(document.adoptedStyleSheets || []);
+    const ownAdoptedRules = adopted.includes(ownSheet) && ownSheet && ownSheet.cssRules ? ownSheet.cssRules.length : 0;
+    const hash = window.${CSS_HASH_MARKER} || '';
+    const present = elRules > 0 || ownAdoptedRules > 0;
+    return {
+      present: present,
+      current: present && (${JSON.stringify(expectedHash)} === '' || hash === ${JSON.stringify(expectedHash)}),
+      hash: hash,
+      elRules: elRules,
+      adoptedRules: ownAdoptedRules
+    };
+  })()`;
+}
 
 const REMOVE_EXPR = `(function () {
   const el = document.getElementById(${JSON.stringify(STYLE_ID)});
   if (el) el.remove();
-  try { document.adoptedStyleSheets = []; } catch (e) {}
-  delete window.__gptgirlAlt;
+  const ownSheet = window.${SHEET_MARKER};
+  try {
+    if (ownSheet) {
+      document.adoptedStyleSheets = Array.from(document.adoptedStyleSheets || []).filter(function (sheet) {
+        return sheet !== ownSheet;
+      });
+    }
+  } catch (e) {}
+  delete window.${SHEET_MARKER};
+  delete window.${CSS_HASH_MARKER};
   delete window.__ggBuf;
-  return { removed: !document.getElementById(${JSON.stringify(STYLE_ID)}) };
+  return {
+    removed: !document.getElementById(${JSON.stringify(STYLE_ID)})
+      && (!ownSheet || !Array.from(document.adoptedStyleSheets || []).includes(ownSheet))
+  };
 })()`;
+
+function cssHash(css) {
+  return createHash('sha256').update(css).digest('hex').slice(0, 16);
+}
 
 async function attachAndInject(target, css, port) {
   const cdp = new Cdp(normalizeWsUrl(target.webSocketDebuggerUrl, port));
-  await cdp.connect();
-  await cdp.send('Page.enable');
-  if (!process.env.GG_NO_BYPASS) {
-    try {
-      await cdp.send('Page.setBypassCSP', { enabled: true });
-    } catch (e) {
-      log(`  ! setBypassCSP 不可用（${e.message}），继续尝试`);
+  try {
+    await cdp.connect();
+    await cdp.send('Page.enable');
+    if (!process.env.GG_NO_BYPASS) {
+      try {
+        await cdp.send('Page.setBypassCSP', { enabled: true });
+      } catch (e) {
+        log(`  ! setBypassCSP 不可用（${e.message}），继续尝试`);
+      }
     }
+    const hash = cssHash(css);
+    await deliverCss(cdp, css);
+    const v = await evalIn(cdp, primaryExpression(hash));
+    if (v && v.applied) {
+      log(`  ✓ 已注入并生效: ${describeTarget(target)} (${v.rules} 条规则)`);
+      return { cdp, mode: 'style-element', hash };
+    }
+    log(`  ! 内联样式未生效（rules=${v ? v.rules : '?'}，可能被 CSP 拦截），改用 constructed stylesheet 回退`);
+    const f = await evalIn(cdp, fallbackExpression(hash));
+    if (f && f.applied) {
+      log(`  ✓ 已通过 adoptedStyleSheets 注入: ${describeTarget(target)} (${f.rules} 条规则)`);
+      return { cdp, mode: 'adopted-stylesheets', hash };
+    }
+    throw new Error('两种注入方式均未生效');
+  } catch (error) {
+    cdp.close();
+    throw error;
   }
-  await deliverCss(cdp, css);
-  const v = await evalIn(cdp, PRIMARY_EXPR);
-  if (v && v.applied) {
-    log(`  ✓ 已注入并生效: ${describeTarget(target)} (${v.rules} 条规则)`);
-    return { cdp, mode: 'style-element' };
-  }
-  log(`  ! 内联样式未生效（rules=${v ? v.rules : '?'}，可能被 CSP 拦截），改用 constructed stylesheet 回退`);
-  const f = await evalIn(cdp, FALLBACK_EXPR);
-  if (f && f.applied) {
-    log(`  ✓ 已通过 adoptedStyleSheets 注入: ${describeTarget(target)} (${f.rules} 条规则)`);
-    return { cdp, mode: 'adopted-stylesheets' };
-  }
-  throw new Error('两种注入方式均未生效');
 }
 
 /** 注入当前所有页面 target（不驻留），供 CLI 与测试共用 */
-export async function injectAll(port, css) {
-  const pages = pageTargets(await listTargets(port));
+export async function injectAll(port, css, options = {}) {
+  const pages = selectThemeTargets(await listTargets(port), options);
   const results = [];
   for (const t of pages) {
     try {
@@ -157,6 +219,46 @@ export async function injectAll(port, css) {
   return results;
 }
 
+/** 检查所有页面是否具有当前 GPTGirl 主题版本。 */
+export async function checkAll(port, expectedHash = '') {
+  const pages = selectThemeTargets(await listTargets(port));
+  const results = [];
+  for (const target of pages) {
+    const cdp = new Cdp(normalizeWsUrl(target.webSocketDebuggerUrl, port));
+    try {
+      await cdp.connect();
+      const status = await evalIn(cdp, checkExpression(expectedHash));
+      results.push({ target, ...status });
+    } catch (error) {
+      results.push({ target, error: error.message });
+    } finally {
+      cdp.close();
+    }
+  }
+  return results;
+}
+
+/** 只移除 GPTGirl 自己拥有的样式，不触碰页面的其他构造样式表。 */
+export async function removeAll(port) {
+  const pages = selectThemeTargets(await listTargets(port));
+  const results = [];
+  for (const target of pages) {
+    const cdp = new Cdp(normalizeWsUrl(target.webSocketDebuggerUrl, port));
+    try {
+      await cdp.connect();
+      const status = await evalIn(cdp, REMOVE_EXPR);
+      results.push({ target, ...status });
+    } catch (error) {
+      results.push({ target, error: error.message });
+    } finally {
+      cdp.close();
+    }
+  }
+  return results;
+}
+
+export { cssHash };
+
 async function main() {
   const a = parseArgs(process.argv.slice(2));
 
@@ -166,34 +268,20 @@ async function main() {
   }
 
   if (a.check) {
-    const pages = pageTargets(await listTargets(a.port));
-    log(`调试端口 ${a.port}：页面 target ${pages.length} 个`);
-    for (const t of pages) {
-      try {
-        const cdp = new Cdp(normalizeWsUrl(t.webSocketDebuggerUrl, a.port));
-        await cdp.connect();
-        const v = await evalIn(cdp, CHECK_EXPR);
-        log(`  ${v && v.present ? '✓ 已注入' : '· 未注入'}  ${describeTarget(t)}`);
-        cdp.close();
-      } catch (e) {
-        log(`  × 检查失败: ${e.message}`);
-      }
+    const results = await checkAll(a.port);
+    log(`调试端口 ${a.port}：页面 target ${results.length} 个`);
+    for (const result of results) {
+      if (result.error) log(`  × 检查失败: ${result.error}`);
+      else log(`  ${result.present ? '✓ 已注入' : '· 未注入'}  ${describeTarget(result.target)}`);
     }
     return;
   }
 
   if (a.remove) {
-    const pages = pageTargets(await listTargets(a.port));
-    for (const t of pages) {
-      try {
-        const cdp = new Cdp(normalizeWsUrl(t.webSocketDebuggerUrl, a.port));
-        await cdp.connect();
-        const v = await evalIn(cdp, REMOVE_EXPR);
-        log(`  ${v && v.removed ? '✓ 已移除' : '· 无需移除'}  ${describeTarget(t)}`);
-        cdp.close();
-      } catch (e) {
-        log(`  × 移除失败: ${e.message}`);
-      }
+    const results = await removeAll(a.port);
+    for (const result of results) {
+      if (result.error) log(`  × 移除失败: ${result.error}`);
+      else log(`  ${result.removed ? '✓ 已移除' : '· 无需移除'}  ${describeTarget(result.target)}`);
     }
     log('提示：注入是纯运行时的，正常重启 Codex 即完全恢复原样。');
     return;
@@ -220,7 +308,7 @@ async function main() {
 
   const interval = setInterval(async () => {
     try {
-      const pages = pageTargets(await listTargets(a.port));
+      const pages = selectThemeTargets(await listTargets(a.port));
       for (const t of pages) {
         const c = clients.get(t.id);
         if (!c) {
@@ -232,8 +320,8 @@ async function main() {
           }
         } else {
           try {
-            const v = await evalIn(c.cdp, CHECK_EXPR);
-            if (!v || !v.present) {
+            const v = await evalIn(c.cdp, checkExpression(c.hash));
+            if (!v || !v.current) {
               log(`↻ 样式丢失，重新注入: ${describeTarget(t)}`);
               c.cdp.close();
               clients.delete(t.id);
