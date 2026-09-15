@@ -46,4 +46,26 @@ body > [class*="bg-"],
   transition: background-color 0.3s ease;
 }
 
+/*
+ * 将左侧栏的毛玻璃延伸进原生标题栏，同时让应用菜单避开侧栏。
+ * 侧栏宽度由 Codex 自身维护，拖动调整宽度后菜单仍会跟随。
+ */
+aside.app-shell-left-panel::before {
+  content: "" !important;
+  position: absolute !important;
+  inset-inline: 0 !important;
+  top: calc(-1 * var(--height-toolbar-sm, 36px)) !important;
+  height: var(--height-toolbar-sm, 36px) !important;
+  z-index: 0 !important;
+  background-color: inherit !important;
+  backdrop-filter: inherit !important;
+  pointer-events: none !important;
+}
+
+[class*="_ApplicationMenuTopBar_"] > [role="menubar"] {
+  position: absolute !important;
+  inset-inline-start: var(--codex-sidebar-preferred-width, 240px) !important;
+  top: 6px !important;
+}
+
 {{GG_EXTRA_CSS}}
