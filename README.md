@@ -31,7 +31,7 @@ Codex 当前的官方插件接口不提供全局 CSS、Renderer DOM 扩展点或
 ## 目录结构
 
 ```
-codex-plugin-gptgirl/
+codex-gptgirl-theme/
 ├── gptgirl.config.json          # 主题配置（图片/透明度/模糊/面板）
 ├── core/theme.css.tpl           # CSS 模板（平台无关）
 ├── adapters/codex-desktop/      # Codex 桌面版适配器（CDP 注入）
