@@ -89,15 +89,32 @@ console.log('\n== 用例 1：标准注入（setBypassCSP + <style>） ==');
       const rules = el && el.sheet && el.sheet.cssRules ? el.sheet.cssRules.length : 0;
       const before = getComputedStyle(document.documentElement, '::before');
       const root = document.getElementById('root');
+      const card = document.getElementById('diff-card');
+      const context = document.getElementById('context-panel');
+      const rowGroup = card && card.getElementsByClassName('group/turn-diff-file-row')[0];
+      const row = rowGroup && rowGroup.querySelector('button');
+      const cardStyle = card && getComputedStyle(card);
+      const contextStyle = context && getComputedStyle(context);
+      const rowStyle = row && getComputedStyle(row);
       return {
         rules: rules,
         bg: before.backgroundImage || '',
-        rootOpacity: root ? getComputedStyle(root).opacity : ''
+        rootOpacity: root ? getComputedStyle(root).opacity : '',
+        cardRadius: cardStyle ? cardStyle.borderRadius : '',
+        cardBorder: cardStyle ? cardStyle.borderTopWidth : '',
+        cardBackdrop: cardStyle ? cardStyle.backdropFilter : '',
+        contextRadius: contextStyle ? contextStyle.borderRadius : '',
+        contextBorder: contextStyle ? contextStyle.borderTopWidth : '',
+        rowShadow: rowStyle ? rowStyle.boxShadow : '',
+        rowBackdrop: rowStyle ? rowStyle.backdropFilter : ''
       };
     })()`);
     check('注入过程无错误', results.length > 0 && results.every((r) => !r.error));
     check('样式规则已生效', v.rules > 0, `${v.rules} 条规则`);
     check('背景为 data URI', v.bg.includes('data:image/'), v.bg.slice(0, 40) + '…');
+    check('编辑文件卡片应用柔光玻璃', v.cardRadius === '18px' && v.cardBorder === '1px' && v.cardBackdrop.includes('blur(22px)'), `${v.cardRadius} / ${v.cardBorder} / ${v.cardBackdrop}`);
+    check('右侧环境面板保持原样', v.contextRadius === '11px' && v.contextBorder === '0px', `${v.contextRadius} / ${v.contextBorder}`);
+    check('文件行不产生独立白块', v.rowShadow === 'none' && v.rowBackdrop === 'none', `${v.rowShadow} / ${v.rowBackdrop}`);
     cdp.close();
   } catch (e) {
     check('用例 1 运行', false, e.message);

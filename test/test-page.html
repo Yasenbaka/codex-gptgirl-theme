@@ -9,6 +9,10 @@
   .bar { background: #27272a; color: #fff; padding: 8px 16px; }
   .panel { background: #f4f4f5; margin: 16px; padding: 16px; border-radius: 8px; }
   .panel.dark { background: #18181b; color: #fff; }
+  .bg-surface-elevated-secondary\/50,
+  .bg-surface-elevated-secondary { background: #f4f4f5; }
+  #diff-card, #context-panel { margin: 16px; padding: 12px; border-radius: 11px; }
+  #diff-card button { background: #fff; box-shadow: 0 2px 6px #0002; backdrop-filter: blur(4px); }
 </style>
 </head>
 <body>
@@ -16,6 +20,11 @@
     <div class="bar">TopBar（bg-zinc-800 模拟）</div>
     <div class="panel">Panel 1 — bg-zinc-100 模拟</div>
     <div class="panel dark">Panel 2 — bg-zinc-900 模拟</div>
+    <div id="diff-card" class="bg-surface-elevated-secondary/50">
+      <div class="group/turn-diff-header"><span><span class="bg-surface-secondary/92">＋</span><span>已编辑 3 个文件</span><div><button>撤销</button><button>审核</button></div></span></div>
+      <div class="border-t"><div class="group/turn-diff-file-row"><button>src/example.ts <span>+12 -3</span></button></div><button>再显示 2 个文件</button></div>
+    </div>
+    <div id="context-panel" class="bg-surface-elevated-secondary"><header>环境信息</header><div>来源</div></div>
     <p style="padding:0 16px">文本可读性测试：The quick brown fox jumps over the lazy dog 0123456789</p>
   </div>
 </body>

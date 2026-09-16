@@ -76,4 +76,115 @@ aside.app-shell-left-panel > [class*="group/panel-resizer"] {
   background-color: transparent !important;
 }
 
+/*
+ * “已编辑文件”卡片采用独立柔光玻璃外观。
+ * 必须同时满足卡片背景类和直属 diff 标题结构，避免命中右侧环境信息/来源面板；
+ * 后者虽然也使用 bg-surface-elevated-secondary，但没有 group/turn-diff-header 子节点。
+ */
+[class~="bg-surface-elevated-secondary/50"]:has(> [class~="group/turn-diff-header"]) {
+  position: relative !important;
+  border: 1px solid rgba(100, 92, 145, 0.22) !important;
+  border-radius: 18px !important;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.24), transparent 44%),
+    rgba(253, 252, 255, 0.78) !important;
+  box-shadow:
+    0 18px 54px rgba(49, 45, 86, 0.16),
+    0 2px 8px rgba(46, 41, 72, 0.08) !important;
+  backdrop-filter: blur(22px) saturate(128%) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(128%) !important;
+}
+
+[class~="bg-surface-elevated-secondary/50"]:has(> [class~="group/turn-diff-header"])::before {
+  content: "" !important;
+  position: absolute !important;
+  inset: 14px auto 14px 0 !important;
+  z-index: 20 !important;
+  width: 3px !important;
+  border-radius: 0 999px 999px 0 !important;
+  background: linear-gradient(180deg, #afa3dd, #786bb8 56%, #c4a64d) !important;
+  opacity: 0.88 !important;
+  pointer-events: none !important;
+}
+
+/* 标题图标收敛尺寸，按钮保留 Codex 原生行为，只调整视觉层级。 */
+[class~="bg-surface-elevated-secondary/50"]:has(> [class~="group/turn-diff-header"])
+  > [class~="group/turn-diff-header"] > span > [class~="bg-surface-secondary/92"] {
+  width: 32px !important;
+  height: 32px !important;
+  margin-inline: 4px !important;
+  border: 1px solid rgba(111, 101, 157, 0.20) !important;
+  border-radius: 10px !important;
+  color: #6f659e !important;
+  background: rgba(255, 255, 255, 0.64) !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.78) !important;
+}
+
+[class~="bg-surface-elevated-secondary/50"]:has(> [class~="group/turn-diff-header"])
+  > [class~="group/turn-diff-header"] > span > div > button:last-child {
+  border-color: rgba(89, 81, 127, 0.16) !important;
+  border-radius: 9px !important;
+  background: rgba(255, 255, 255, 0.54) !important;
+  box-shadow: 0 1px 2px rgba(48, 43, 68, 0.04) !important;
+}
+
+/* 文件行不继承通用 bg-surface 毛玻璃阴影，避免每一行都出现独立白块。 */
+[class~="bg-surface-elevated-secondary/50"]:has(> [class~="group/turn-diff-header"])
+  > [class~="border-t"] {
+  border-color: rgba(91, 97, 132, 0.16) !important;
+}
+
+[class~="bg-surface-elevated-secondary/50"]:has(> [class~="group/turn-diff-header"])
+  [class~="group/turn-diff-file-row"] button,
+[class~="bg-surface-elevated-secondary/50"]:has(> [class~="group/turn-diff-header"])
+  > [class~="border-t"] > button {
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+[class~="bg-surface-elevated-secondary/50"]:has(> [class~="group/turn-diff-header"])
+  [class~="group/turn-diff-file-row"] button:hover,
+[class~="bg-surface-elevated-secondary/50"]:has(> [class~="group/turn-diff-header"])
+  > [class~="border-t"] > button:hover {
+  background: rgba(111, 101, 158, 0.065) !important;
+}
+
+html.electron-dark
+  [class~="bg-surface-elevated-secondary/50"]:has(> [class~="group/turn-diff-header"]) {
+  border-color: rgba(150, 137, 205, 0.28) !important;
+  background:
+    linear-gradient(135deg, rgba(103, 92, 151, 0.16), transparent 44%),
+    rgba(27, 29, 36, 0.78) !important;
+  box-shadow:
+    0 18px 54px rgba(0, 0, 0, 0.30),
+    0 2px 8px rgba(0, 0, 0, 0.18) !important;
+}
+
+html.electron-dark
+  [class~="bg-surface-elevated-secondary/50"]:has(> [class~="group/turn-diff-header"])
+  > [class~="group/turn-diff-header"] > span > [class~="bg-surface-secondary/92"] {
+  border-color: rgba(157, 143, 213, 0.25) !important;
+  color: #b7abe5 !important;
+  background: rgba(43, 43, 56, 0.68) !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.08) !important;
+}
+
+html.electron-dark
+  [class~="bg-surface-elevated-secondary/50"]:has(> [class~="group/turn-diff-header"])
+  > [class~="group/turn-diff-header"] > span > div > button:last-child {
+  border-color: rgba(157, 143, 213, 0.22) !important;
+  background: rgba(43, 43, 56, 0.60) !important;
+}
+
+html.electron-dark
+  [class~="bg-surface-elevated-secondary/50"]:has(> [class~="group/turn-diff-header"])
+  [class~="group/turn-diff-file-row"] button:hover,
+html.electron-dark
+  [class~="bg-surface-elevated-secondary/50"]:has(> [class~="group/turn-diff-header"])
+  > [class~="border-t"] > button:hover {
+  background: rgba(154, 139, 211, 0.10) !important;
+}
+
 {{GG_EXTRA_CSS}}
