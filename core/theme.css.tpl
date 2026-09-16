@@ -71,4 +71,9 @@ aside.app-shell-left-panel > [class*="group/panel-resizer"] {
   top: 6px !important;
 }
 
+/* 最大化时标题栏子容器会继承系统纯色底，需保持主题背景可见。 */
+[data-app-shell-header-toolbar] > div {
+  background-color: transparent !important;
+}
+
 {{GG_EXTRA_CSS}}
