@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GPTGirl · 已编辑文件卡片设计原型</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #252938;
+      --ink-soft: #616779;
+      --ink-faint: #8b91a1;
+      --line: rgba(91, 97, 132, 0.16);
+      --line-strong: rgba(107, 102, 151, 0.24);
+      --glass: rgba(253, 252, 255, 0.78);
+      --glass-strong: rgba(255, 255, 255, 0.9);
+      --violet: #7668b5;
+      --violet-soft: #9b8fd0;
+      --gold: #b79a45;
+      --green: #1d9a63;
+      --red: #c75b65;
+      --shadow: 0 18px 54px rgba(49, 45, 86, 0.16), 0 2px 8px rgba(46, 41, 72, 0.08);
+      --card-radius: 18px;
+      --card-alpha: 0.78;
+      --card-blur: 22px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      width: 100%;
+      min-width: 1080px;
+      height: 100%;
+      min-height: 720px;
+      margin: 0;
+      overflow: hidden;
+      font-family: "Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: #e9e9f4;
+    }
+
+    button { font: inherit; color: inherit; }
+
+    .app {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      isolation: isolate;
+      background: url("../assets/background.light.jpg") 85% center / cover no-repeat;
+    }
+
+    .app::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      background: linear-gradient(90deg, rgba(240, 241, 250, 0.14), rgba(255, 255, 255, 0.03) 48%, rgba(241, 239, 249, 0.08));
+    }
+
+    /* 仅用于模拟 Codex 框架；这些样式不参与目标卡片的视觉继承。 */
+    .sidebar {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 228px;
+      padding: 44px 12px 14px;
+      border-right: 1px solid rgba(84, 88, 118, 0.12);
+      background: rgba(238, 239, 248, 0.76);
+      backdrop-filter: blur(26px) saturate(112%);
+      box-shadow: 8px 0 30px rgba(71, 68, 103, 0.06);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 5px 14px;
+      font-weight: 680;
+      letter-spacing: -0.01em;
+    }
+
+    .sidebar-list { display: grid; gap: 2px; }
+    .sidebar-item,
+    .thread {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      height: 31px;
+      padding: 0 9px;
+      border-radius: 8px;
+      color: #444a59;
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .sidebar-item svg,
+    .thread svg { width: 15px; height: 15px; flex: none; }
+    .section-title { margin: 20px 9px 8px; color: #74798a; font-size: 12px; }
+    .project { margin: 8px 8px 5px; font-size: 13px; font-weight: 600; }
+    .thread { height: 29px; padding-left: 26px; }
+    .thread.active { background: rgba(126, 119, 166, 0.1); color: #303442; }
+
+    .titlebar {
+      position: absolute;
+      inset: 0 0 auto 228px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 18px 0 20px;
+      font-size: 13px;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .menu { display: flex; gap: 25px; }
+    .window-actions { display: flex; align-items: center; gap: 18px; color: #2e3340; }
+
+    .conversation {
+      position: absolute;
+      inset: 40px 304px 0 228px;
+      overflow: hidden;
+    }
+
+    .conversation-inner {
+      width: min(740px, calc(100% - 42px));
+      margin: 0 auto;
+      padding-top: clamp(150px, 20vh, 205px);
+    }
+
+    .message {
+      margin-left: auto;
+      width: min(520px, 82%);
+      padding: 13px 16px;
+      border: 1px solid rgba(183, 154, 69, 0.66);
+      border-radius: 18px 18px 5px 18px;
+      background: rgba(255, 255, 255, 0.78);
+      box-shadow: 0 5px 18px rgba(54, 48, 78, 0.11);
+      font-size: 13px;
+      line-height: 1.6;
+      backdrop-filter: blur(14px);
+    }
+
+    .answer {
+      margin: 68px 0 12px;
+      padding: 10px 15px;
+      border: 1px solid rgba(183, 154, 69, 0.5);
+      border-radius: 18px 18px 18px 5px;
+      background: rgba(255, 255, 255, 0.74);
+      box-shadow: 0 5px 18px rgba(54, 48, 78, 0.1);
+      font-size: 13px;
+      line-height: 1.55;
+      backdrop-filter: blur(14px);
+    }
+
+    /*
+      目标组件：只使用 .gg-edit-card 命名空间。
+      正式落地时会把命名空间替换为经 DOM 探针确认的卡片锚点，
+      不再使用 [class*="bg-surface..."] 这类会命中右栏的广域选择器。
+    */
+    .gg-edit-card {
+      position: relative;
+      width: 100%;
+      overflow: clip;
+      border: 1px solid rgba(100, 92, 145, 0.22);
+      border-radius: var(--card-radius);
+      background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.24), transparent 44%),
+        rgba(253, 252, 255, var(--card-alpha));
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(var(--card-blur)) saturate(128%);
+      -webkit-backdrop-filter: blur(var(--card-blur)) saturate(128%);
+      transition: border-radius 180ms ease, background 180ms ease, box-shadow 180ms ease;
+    }
+
+    .gg-edit-card::before {
+      content: "";
+      position: absolute;
+      inset: 14px auto 14px 0;
+      width: 3px;
+      border-radius: 0 999px 999px 0;
+      background: linear-gradient(180deg, #afa3dd, #786bb8 56%, #c4a64d);
+      opacity: 0.88;
+    }
+
+    .edit-head {
+      min-height: 58px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 18px;
+      padding: 11px 14px 10px 17px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .edit-title-group {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 11px;
+    }
+
+    .edit-icon {
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      flex: none;
+      border: 1px solid rgba(111, 101, 157, 0.2);
+      border-radius: 10px;
+      color: #6f659e;
+      background: rgba(255, 255, 255, 0.64);
+      box-shadow: inset 0 1px rgba(255, 255, 255, 0.78);
+    }
+
+    .edit-icon svg { width: 17px; height: 17px; }
+    .edit-copy { min-width: 0; }
+    .edit-copy h2 { margin: 0; font-size: 14px; font-weight: 680; letter-spacing: -0.01em; }
+    .edit-summary { display: flex; align-items: center; gap: 8px; margin-top: 3px; font-size: 11px; }
+    .edit-summary .added { color: var(--green); }
+    .edit-summary .removed { color: var(--red); }
+    .edit-summary .dot { width: 3px; height: 3px; border-radius: 50%; background: #b0aeb8; }
+    .edit-summary .hint { color: var(--ink-faint); }
+
+    .edit-actions { display: flex; align-items: center; gap: 7px; }
+    .icon-button,
+    .review-button {
+      height: 31px;
+      border: 1px solid transparent;
+      border-radius: 9px;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .icon-button {
+      width: 31px;
+      display: grid;
+      place-items: center;
+      color: #707586;
+    }
+
+    .icon-button:hover { background: rgba(104, 95, 148, 0.08); color: #4e456f; }
+    .icon-button svg { width: 15px; height: 15px; }
+
+    .review-button {
+      padding: 0 13px;
+      border-color: rgba(89, 81, 127, 0.16);
+      color: #4d4a5b;
+      background: rgba(255, 255, 255, 0.54);
+      box-shadow: 0 1px 2px rgba(48, 43, 68, 0.04);
+    }
+
+    .review-button:hover { border-color: rgba(118, 104, 181, 0.34); background: rgba(255, 255, 255, 0.82); }
+
+    .file-list { padding: 7px 9px 6px 12px; }
+
+    .file-row {
+      min-height: 36px;
+      display: grid;
+      grid-template-columns: 23px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 3px;
+      padding: 0 9px 0 7px;
+      border-radius: 9px;
+      transition: background 130ms ease;
+    }
+
+    .file-row:hover { background: rgba(111, 101, 158, 0.065); }
+    .file-mark { display: grid; place-items: center; color: #858999; }
+    .file-mark svg { width: 14px; height: 14px; }
+
+    .file-path {
+      min-width: 0;
+      display: flex;
+      align-items: baseline;
+      overflow: hidden;
+      white-space: nowrap;
+      font-size: 12px;
+    }
+
+    .directory {
+      min-width: 16px;
+      overflow: hidden;
+      color: #9295a2;
+      text-overflow: ellipsis;
+    }
+
+    .filename { flex: none; color: #383c49; font-weight: 570; }
+    .diff { display: flex; min-width: 76px; justify-content: flex-end; gap: 4px; padding-left: 13px; font: 12px/1 "Cascadia Mono", "SFMono-Regular", Consolas, monospace; }
+    .diff .plus { color: var(--green); }
+    .diff .minus { color: var(--red); }
+
+    .edit-foot {
+      min-height: 39px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 15px 0 18px;
+      border-top: 1px solid rgba(91, 97, 132, 0.11);
+      color: #696e7e;
+      font-size: 12px;
+    }
+
+    .more-files { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
+    .more-files:hover { color: #50486d; }
+    .more-files svg { width: 13px; height: 13px; transition: transform 150ms ease; }
+    .gg-edit-card.expanded .more-files svg { transform: rotate(180deg); }
+    .scope-badge { display: inline-flex; align-items: center; gap: 6px; color: #898d9c; }
+    .scope-dot { width: 6px; height: 6px; border-radius: 50%; background: #8b7bc6; box-shadow: 0 0 0 3px rgba(139, 123, 198, 0.11); }
+
+    .hidden-files {
+      display: grid;
+      grid-template-rows: 0fr;
+      transition: grid-template-rows 190ms ease;
+    }
+    .hidden-files > div { overflow: hidden; }
+    .gg-edit-card.expanded .hidden-files { grid-template-rows: 1fr; }
+
+    /* 右侧面板刻意保持独立的紧凑语言，验证目标卡片不会污染它。 */
+    .context-panel {
+      position: absolute;
+      top: 76px;
+      right: 18px;
+      width: 274px;
+      overflow: hidden;
+      border: 1px solid rgba(81, 84, 104, 0.18);
+      border-radius: 14px;
+      background: rgba(251, 251, 254, 0.7);
+      box-shadow: 0 12px 30px rgba(46, 43, 64, 0.12);
+      backdrop-filter: blur(19px) saturate(112%);
+    }
+
+    .context-section + .context-section { border-top: 1px solid rgba(72, 75, 95, 0.13); }
+    .context-title {
+      height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 13px;
+      border-bottom: 1px solid rgba(72, 75, 95, 0.1);
+      font-size: 13px;
+      font-weight: 630;
+    }
+    .context-row {
+      height: 31px;
+      display: grid;
+      grid-template-columns: 19px 1fr auto;
+      align-items: center;
+      gap: 7px;
+      padding: 0 13px;
+      font-size: 12px;
+    }
+    .context-row svg { width: 14px; height: 14px; color: #636877; }
+    .context-muted { color: #858997; }
+
+    .composer {
+      position: absolute;
+      left: 50%;
+      bottom: 15px;
+      width: min(740px, calc(100% - 80px));
+      height: 92px;
+      transform: translateX(-50%);
+      border: 1px solid rgba(91, 90, 111, 0.13);
+      border-radius: 21px;
+      background: rgba(255, 255, 255, 0.78);
+      box-shadow: 0 14px 40px rgba(53, 48, 79, 0.15);
+      backdrop-filter: blur(20px);
+    }
+    .placeholder { padding: 16px 18px; color: #a2a4ad; font-size: 12px; }
+    .composer-bottom { position: absolute; inset: auto 14px 11px; display: flex; align-items: center; justify-content: space-between; font-size: 11px; }
+    .composer-tools { display: flex; gap: 13px; align-items: center; color: #777b88; }
+    .send { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; color: white; background: linear-gradient(145deg, #8d83c8, #6d61ae); box-shadow: 0 4px 12px rgba(100, 86, 172, 0.26); }
+
+    .prototype-toolbar {
+      position: fixed;
+      z-index: 20;
+      left: 50%;
+      top: 51px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 5px;
+      transform: translateX(-50%);
+      border: 1px solid rgba(82, 77, 119, 0.2);
+      border-radius: 13px;
+      background: rgba(250, 249, 253, 0.86);
+      box-shadow: 0 10px 32px rgba(50, 45, 79, 0.13);
+      backdrop-filter: blur(18px);
+    }
+
+    .prototype-toolbar span { padding: 0 8px; color: #858291; font-size: 11px; }
+    .mode-button {
+      height: 29px;
+      padding: 0 11px;
+      border: 0;
+      border-radius: 9px;
+      color: #686576;
+      background: transparent;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .mode-button.active { color: #fff; background: #7165a9; box-shadow: 0 3px 9px rgba(89, 73, 158, 0.22); }
+
+    .annotation {
+      position: fixed;
+      z-index: 18;
+      left: calc(50% - 30px);
+      bottom: 118px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 11px;
+      border: 1px solid rgba(91, 83, 132, 0.15);
+      border-radius: 10px;
+      color: #5d6070;
+      background: rgba(254, 253, 255, 0.82);
+      box-shadow: 0 7px 22px rgba(50, 45, 79, 0.1);
+      font-size: 11px;
+      backdrop-filter: blur(15px);
+      opacity: 0;
+      transform: translate(-50%, 5px);
+      pointer-events: none;
+      transition: opacity 150ms ease, transform 150ms ease;
+    }
+    body.show-scope .annotation { opacity: 1; transform: translate(-50%, 0); }
+    body.show-scope .gg-edit-card { outline: 2px solid rgba(115, 87, 220, 0.75); outline-offset: 4px; }
+    body.show-scope .context-panel { outline: 2px dashed rgba(205, 157, 36, 0.8); outline-offset: 4px; }
+
+    body[data-variant="porcelain"] {
+      --card-alpha: 0.92;
+      --card-blur: 13px;
+      --shadow: 0 12px 34px rgba(47, 45, 70, 0.13), 0 1px 4px rgba(46, 41, 72, 0.07);
+      --card-radius: 15px;
+    }
+    body[data-variant="porcelain"] .gg-edit-card::before { opacity: 0.5; }
+
+    @media (max-width: 1280px) {
+      .context-panel { width: 252px; right: 12px; }
+      .conversation { right: 270px; }
+      .conversation-inner { width: calc(100% - 32px); }
+      .scope-badge { display: none; }
+    }
+  </style>
+</head>
+<body data-variant="glass">
+  <main class="app" aria-label="Codex 主题效果模拟">
+    <aside class="sidebar" aria-label="模拟左侧栏">
+      <div class="brand"><span>Codex⌄</span><span>⌕　♧</span></div>
+      <nav class="sidebar-list">
+        <div class="sidebar-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg>新对话</div>
+        <div class="sidebar-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="18" r="2"/><path d="M8 6h3a3 3 0 0 1 3 3v6a3 3 0 0 0 3 3"/></svg>Pull Request</div>
+        <div class="sidebar-item">◷　定时任务</div>
+        <div class="sidebar-item">◎　插件</div>
+        <div class="section-title">项目</div>
+        <div class="project">▱　CMS_v1</div>
+        <div class="thread active">重构标准投放实体同步</div>
+        <div class="thread">查询标准实体同步 QPS 限制</div>
+        <div class="thread">修复标准投放项目素材全量</div>
+        <div class="thread">确认三类投放数据支持</div>
+        <div class="thread">重构巨量授权定时刷新</div>
+        <div class="thread">重构侧边栏分组与按钮</div>
+        <div class="thread">修复仪表灯权限状态异常</div>
+        <div class="project" style="margin-top:18px">▱　MangeAI_v4</div>
+        <div class="thread">厘清 Flare 和 Sunburst 计划</div>
+        <div class="thread">评估系统更新维护阻断方案</div>
+      </nav>
+    </aside>
+
+    <header class="titlebar">
+      <div class="menu"><span>文件</span><span>编辑</span><span>视图</span><span>帮助</span></div>
+      <div class="window-actions"><span>•••</span><span>⇧ 分享</span><span>☷</span></div>
+    </header>
+
+    <section class="conversation">
+      <div class="prototype-toolbar" aria-label="原型样式切换">
+        <span>卡片质感</span>
+        <button class="mode-button active" data-variant="glass">柔光玻璃</button>
+        <button class="mode-button" data-variant="porcelain">凝练白瓷</button>
+        <button class="mode-button" id="scopeToggle">查看隔离范围</button>
+      </div>
+
+      <div class="conversation-inner">
+        <div class="message">这个标准投放的实体同步，不能说难看，只能说是丑的批爆、乱的要死、无可救药。把它做进仪表灯吧。</div>
+        <div class="answer">已改进顶部“实体”仪表灯，点击可查看进度、同步和续跑。下面是本次修改文件。</div>
+
+        <article class="gg-edit-card" id="editCard" aria-label="已编辑文件卡片">
+          <header class="edit-head">
+            <div class="edit-title-group">
+              <div class="edit-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 12h8M12 8v8"/></svg>
+              </div>
+              <div class="edit-copy">
+                <h2>已编辑 7 个文件</h2>
+                <div class="edit-summary"><span class="added">+622</span><span class="removed">−245</span><span class="dot"></span><span class="hint">工作区改动</span></div>
+              </div>
+            </div>
+            <div class="edit-actions">
+              <button class="icon-button" aria-label="撤销" title="撤销">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="m9 7-4 4 4 4"/><path d="M5 11h8a6 6 0 0 1 6 6"/></svg>
+              </button>
+              <button class="review-button">审查</button>
+            </div>
+          </header>
+
+          <div class="file-list">
+            <div class="file-row">
+              <span class="file-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/></svg></span>
+              <span class="file-path"><span class="directory">D:/Project_Company/CMS_v1/frontend/src/store/</span><span class="filename">standardEntitySync.ts</span></span>
+              <span class="diff"><span class="plus">+118</span><span class="minus">−0</span></span>
+            </div>
+            <div class="file-row">
+              <span class="file-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/></svg></span>
+              <span class="file-path"><span class="directory">D:/Project_Company/CMS_v1/frontend/src/components/</span><span class="filename">StandardEntitySyncIndicator.vue</span></span>
+              <span class="diff"><span class="plus">+216</span><span class="minus">−121</span></span>
+            </div>
+            <div class="file-row">
+              <span class="file-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/></svg></span>
+              <span class="file-path"><span class="directory">D:/Project_Company/CMS_v1/frontend/src/components/</span><span class="filename">Navbar.vue</span></span>
+              <span class="diff"><span class="plus">+16</span><span class="minus">−4</span></span>
+            </div>
+            <div class="hidden-files"><div>
+              <div class="file-row">
+                <span class="file-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/></svg></span>
+                <span class="file-path"><span class="directory">D:/Project_Company/CMS_v1/frontend/src/api/</span><span class="filename">standardEntity.ts</span></span>
+                <span class="diff"><span class="plus">+94</span><span class="minus">−37</span></span>
+              </div>
+              <div class="file-row">
+                <span class="file-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/></svg></span>
+                <span class="file-path"><span class="directory">D:/Project_Company/CMS_v1/frontend/src/types/</span><span class="filename">entity.ts</span></span>
+                <span class="diff"><span class="plus">+82</span><span class="minus">−21</span></span>
+              </div>
+              <div class="file-row">
+                <span class="file-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/></svg></span>
+                <span class="file-path"><span class="directory">D:/Project_Company/CMS_v1/backend/src/service/</span><span class="filename">syncService.ts</span></span>
+                <span class="diff"><span class="plus">+71</span><span class="minus">−46</span></span>
+              </div>
+              <div class="file-row">
+                <span class="file-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/></svg></span>
+                <span class="file-path"><span class="directory">D:/Project_Company/CMS_v1/test/</span><span class="filename">standardEntitySync.test.ts</span></span>
+                <span class="diff"><span class="plus">+25</span><span class="minus">−16</span></span>
+              </div>
+            </div></div>
+          </div>
+
+          <footer class="edit-foot">
+            <span class="more-files" id="moreFiles">再显示 4 个文件
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m7 9 5 5 5-5"/></svg>
+            </span>
+            <span class="scope-badge"><span class="scope-dot"></span>仅修改文件卡片</span>
+          </footer>
+        </article>
+      </div>
+
+      <div class="annotation"><span class="scope-dot"></span>紫色实线：本次美化目标　·　金色虚线：保持原样的右侧面板</div>
+
+      <div class="composer">
+        <div class="placeholder">随心输入</div>
+        <div class="composer-bottom"><div class="composer-tools"><span>＋</span><span style="color:#b08425">◉ 完全访问</span></div><div class="composer-tools"><span>GPT-6 Astra 极高⌄</span><span>♩</span><span class="send">▮</span></div></div>
+      </div>
+    </section>
+
+    <aside class="context-panel" aria-label="环境信息与来源面板">
+      <section class="context-section">
+        <div class="context-title"><span>环境信息</span><span>＋</span></div>
+        <div class="context-row"><span>▣</span><span>变更</span><span><i style="color:#16965d;font-style:normal">+785</i> <i style="color:#bf5961;font-style:normal">−216</i></span></div>
+        <div class="context-row"><span>▱</span><span>本地</span><span>⌄</span></div>
+        <div class="context-row"><span>⑂</span><span>main</span><span>⌄</span></div>
+        <div class="context-row"><span>⇧</span><span>提交或推送</span><span></span></div>
+        <div class="context-row context-muted"><span>◉</span><span>无法获取 Pull Request 状态</span><span></span></div>
+        <div class="context-row"><span>◉</span><span>比较分支</span><span>↗</span></div>
+      </section>
+      <section class="context-section">
+        <div class="context-title"><span>来源</span><span>＋</span></div>
+        <div class="context-row"><span>□</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">codex-clipboard-f9cde85a-7c9f-41d3</span><span></span></div>
+        <div class="context-row"><span>⌁</span><span>查看全部</span><span></span></div>
+      </section>
+    </aside>
+  </main>
+
+  <script>
+    const body = document.body;
+    const editCard = document.querySelector("#editCard");
+    const moreFiles = document.querySelector("#moreFiles");
+    const scopeToggle = document.querySelector("#scopeToggle");
+
+    document.querySelectorAll("[data-variant]").forEach((button) => {
+      button.addEventListener("click", () => {
+        body.dataset.variant = button.dataset.variant;
+        document.querySelectorAll("[data-variant]").forEach((item) => item.classList.toggle("active", item === button));
+      });
+    });
+
+    moreFiles.addEventListener("click", () => {
+      const expanded = editCard.classList.toggle("expanded");
+      moreFiles.firstChild.textContent = expanded ? "收起 4 个文件 " : "再显示 4 个文件 ";
+    });
+
+    scopeToggle.addEventListener("click", () => {
+      const enabled = body.classList.toggle("show-scope");
+      scopeToggle.classList.toggle("active", enabled);
+      scopeToggle.textContent = enabled ? "隐藏隔离范围" : "查看隔离范围";
+    });
+  </script>
+</body>
+</html>
