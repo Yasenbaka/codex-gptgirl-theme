@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GPTGirl · 消息再编辑原型</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #282b37;
+      --ink-soft: #656979;
+      --ink-faint: #9295a2;
+      --violet: #7567ae;
+      --violet-deep: #5f518f;
+      --gold: #b79a45;
+      --line: rgba(91, 86, 128, 0.17);
+      --card-bg: rgba(252, 251, 255, 0.82);
+      --card-radius: 20px;
+      --card-blur: 24px;
+      --card-shadow: 0 20px 58px rgba(48, 43, 80, 0.18), 0 2px 8px rgba(46, 41, 72, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      width: 100%;
+      min-width: 900px;
+      height: 100%;
+      min-height: 620px;
+      margin: 0;
+      overflow: hidden;
+      font-family: "Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: #e9e9f3;
+    }
+
+    button,
+    textarea { font: inherit; }
+
+    button { color: inherit; }
+
+    .app {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      isolation: isolate;
+      background: url("../assets/background.light.jpg") 85% center / cover no-repeat;
+    }
+
+    .app::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      background: rgba(245, 245, 252, 0.06);
+      pointer-events: none;
+    }
+
+    .titlebar {
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 51px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 22px;
+      border-bottom: 1px solid rgba(82, 83, 109, 0.10);
+      background: rgba(250, 250, 255, 0.14);
+      backdrop-filter: blur(6px);
+      font-size: 13px;
+    }
+
+    .thread-title,
+    .window-actions,
+    .toolbar,
+    .edit-label,
+    .edit-meta,
+    .editor-footer,
+    .status-note {
+      display: flex;
+      align-items: center;
+    }
+
+    .thread-title { gap: 9px; font-weight: 600; }
+    .thread-title svg { width: 15px; height: 15px; }
+    .window-actions { gap: 18px; }
+
+    .workspace {
+      position: absolute;
+      inset: 51px 0 0;
+      overflow: hidden;
+    }
+
+    .time {
+      position: absolute;
+      top: 54px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #454957;
+      font-size: 12px;
+    }
+
+    .prototype-toolbar {
+      position: fixed;
+      z-index: 20;
+      top: 62px;
+      left: 50%;
+      gap: 4px;
+      padding: 5px;
+      transform: translateX(-50%);
+      border: 1px solid rgba(82, 77, 119, 0.19);
+      border-radius: 13px;
+      background: rgba(250, 249, 253, 0.88);
+      box-shadow: 0 10px 30px rgba(50, 45, 79, 0.13);
+      backdrop-filter: blur(18px);
+    }
+
+    .prototype-toolbar > span { padding: 0 8px; color: #858291; font-size: 11px; }
+
+    .mode-button {
+      height: 29px;
+      padding: 0 11px;
+      border: 0;
+      border-radius: 9px;
+      color: #686576;
+      background: transparent;
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    .mode-button.active {
+      color: #fff;
+      background: #7165a9;
+      box-shadow: 0 3px 9px rgba(89, 73, 158, 0.22);
+    }
+
+    .editor-stage {
+      position: absolute;
+      top: 108px;
+      left: 50%;
+      width: min(720px, calc(100% - 160px));
+      transform: translateX(-50%);
+    }
+
+    .edit-card {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid rgba(102, 94, 145, 0.24);
+      border-radius: var(--card-radius);
+      background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.25), transparent 45%),
+        var(--card-bg);
+      box-shadow: var(--card-shadow);
+      backdrop-filter: blur(var(--card-blur)) saturate(128%);
+      -webkit-backdrop-filter: blur(var(--card-blur)) saturate(128%);
+      transition: border-color 160ms ease, box-shadow 160ms ease, border-radius 160ms ease, background 160ms ease;
+    }
+
+    .edit-card:focus-within {
+      border-color: rgba(118, 102, 181, 0.50);
+      box-shadow: 0 22px 64px rgba(48, 43, 80, 0.20), 0 0 0 3px rgba(118, 102, 181, 0.11);
+    }
+
+    .edit-card::before {
+      content: "";
+      position: absolute;
+      top: 17px;
+      bottom: 17px;
+      left: 0;
+      width: 3px;
+      border-radius: 0 999px 999px 0;
+      background: linear-gradient(180deg, #afa3dd, #796bbb 60%, #c3a34c);
+      opacity: 0.9;
+      pointer-events: none;
+    }
+
+    .editor-header {
+      min-height: 47px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 9px 14px 7px 18px;
+    }
+
+    .edit-label { gap: 9px; min-width: 0; }
+
+    .pencil {
+      width: 27px;
+      height: 27px;
+      display: grid;
+      place-items: center;
+      flex: none;
+      border: 1px solid rgba(111, 101, 157, 0.18);
+      border-radius: 9px;
+      color: #7165a6;
+      background: rgba(255, 255, 255, 0.58);
+    }
+
+    .pencil svg { width: 14px; height: 14px; }
+    .label-title { font-size: 13px; font-weight: 680; }
+    .label-subtitle { margin-left: 2px; color: var(--ink-faint); font-size: 11px; }
+
+    .edit-meta { gap: 6px; color: var(--ink-faint); font-size: 10px; }
+    kbd {
+      min-width: 24px;
+      height: 20px;
+      display: inline-grid;
+      place-items: center;
+      padding: 0 5px;
+      border: 1px solid rgba(92, 89, 117, 0.15);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.52);
+      box-shadow: 0 1px 1px rgba(45, 42, 60, 0.05);
+      font: 10px/1 "Cascadia Mono", Consolas, monospace;
+    }
+
+    .editor-body {
+      position: relative;
+      margin: 0 13px;
+      border: 1px solid rgba(92, 89, 124, 0.13);
+      border-radius: 13px;
+      background: rgba(255, 255, 255, 0.44);
+      box-shadow: inset 0 1px 2px rgba(47, 43, 67, 0.035);
+    }
+
+    .message-input {
+      width: 100%;
+      min-height: 91px;
+      max-height: 190px;
+      display: block;
+      resize: vertical;
+      padding: 14px 15px;
+      border: 0;
+      outline: 0;
+      color: #303340;
+      background: transparent;
+      font-size: 13px;
+      line-height: 1.65;
+      caret-color: var(--violet-deep);
+    }
+
+    .message-input::selection { background: rgba(129, 113, 190, 0.22); }
+
+    .editor-footer {
+      min-height: 52px;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 8px 13px 10px 18px;
+    }
+
+    .edit-hint {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+      color: #777b8a;
+      font-size: 11px;
+    }
+
+    .edit-hint svg { width: 13px; height: 13px; flex: none; color: #8a7dbd; }
+    .char-count { color: #a0a2ad; }
+    .actions { display: flex; align-items: center; gap: 8px; }
+
+    .action-button {
+      height: 33px;
+      padding: 0 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: transform 120ms ease, background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+    }
+
+    .action-button:active { transform: translateY(1px); }
+
+    .cancel-button {
+      border: 1px solid rgba(85, 82, 106, 0.15);
+      color: #555967;
+      background: rgba(255, 255, 255, 0.52);
+    }
+
+    .cancel-button:hover { border-color: rgba(108, 99, 151, 0.30); background: rgba(255, 255, 255, 0.82); }
+
+    .send-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      border: 1px solid rgba(80, 69, 133, 0.25);
+      color: #fff;
+      background: linear-gradient(145deg, #8376bd, #65589c);
+      box-shadow: 0 5px 14px rgba(83, 69, 145, 0.28), inset 0 1px rgba(255, 255, 255, 0.18);
+    }
+
+    .send-button:hover { background: linear-gradient(145deg, #8d80c7, #6b5da4); box-shadow: 0 7px 18px rgba(83, 69, 145, 0.34); }
+    .send-button svg { width: 13px; height: 13px; }
+
+    .status-note {
+      width: max-content;
+      max-width: calc(100% - 30px);
+      gap: 7px;
+      margin: 12px 0 0 13px;
+      padding: 6px 10px;
+      border: 1px solid rgba(97, 95, 120, 0.11);
+      border-radius: 999px;
+      color: #747887;
+      background: rgba(249, 249, 253, 0.57);
+      box-shadow: 0 3px 12px rgba(47, 43, 66, 0.06);
+      backdrop-filter: blur(12px);
+      font-size: 11px;
+    }
+
+    .status-note svg { width: 12px; height: 12px; color: #8e83b8; }
+
+    .ghost-message {
+      position: absolute;
+      top: 370px;
+      left: 50%;
+      width: min(720px, calc(100% - 160px));
+      transform: translateX(-50%);
+      padding: 12px 16px;
+      border: 1px solid rgba(183, 154, 69, 0.48);
+      border-radius: 18px 18px 18px 5px;
+      color: #4f5260;
+      background: rgba(255, 255, 255, 0.71);
+      box-shadow: 0 5px 18px rgba(54, 48, 78, 0.09);
+      font-size: 12px;
+      line-height: 1.55;
+      backdrop-filter: blur(14px);
+      opacity: 0.78;
+    }
+
+    .toast {
+      position: fixed;
+      z-index: 30;
+      left: 50%;
+      bottom: 28px;
+      padding: 9px 13px;
+      transform: translate(-50%, 8px);
+      border: 1px solid rgba(88, 82, 121, 0.16);
+      border-radius: 10px;
+      color: #575b69;
+      background: rgba(252, 251, 255, 0.88);
+      box-shadow: 0 9px 26px rgba(49, 44, 77, 0.14);
+      backdrop-filter: blur(16px);
+      font-size: 11px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 150ms ease, transform 150ms ease;
+    }
+
+    .toast.visible { opacity: 1; transform: translate(-50%, 0); }
+
+    body[data-variant="compact"] {
+      --card-bg: rgba(253, 252, 255, 0.88);
+      --card-radius: 15px;
+      --card-blur: 17px;
+      --card-shadow: 0 13px 36px rgba(48, 43, 80, 0.14), 0 1px 5px rgba(46, 41, 72, 0.07);
+    }
+
+    body[data-variant="compact"] .editor-header {
+      min-height: 39px;
+      padding-top: 7px;
+      padding-bottom: 5px;
+    }
+
+    body[data-variant="compact"] .pencil { width: 24px; height: 24px; border-radius: 7px; }
+    body[data-variant="compact"] .label-subtitle,
+    body[data-variant="compact"] .edit-meta { display: none; }
+    body[data-variant="compact"] .message-input { min-height: 74px; padding-top: 11px; padding-bottom: 11px; }
+    body[data-variant="compact"] .editor-footer { min-height: 46px; padding-top: 6px; padding-bottom: 7px; }
+    body[data-variant="compact"] .edit-card::before { top: 13px; bottom: 13px; opacity: 0.66; }
+
+    body[data-view="original"] .edit-card {
+      overflow: visible;
+      border: 1px solid rgba(85, 85, 99, 0.08);
+      border-radius: 0;
+      background: rgba(240, 240, 247, 0.10);
+      box-shadow: none;
+      backdrop-filter: none;
+    }
+
+    body[data-view="original"] .edit-card::before,
+    body[data-view="original"] .editor-header,
+    body[data-view="original"] .edit-hint { display: none; }
+    body[data-view="original"] .editor-body { margin: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+    body[data-view="original"] .message-input { min-height: 122px; padding: 28px 14px; }
+    body[data-view="original"] .editor-footer { justify-content: flex-end; padding-right: 5px; border-top: 1px solid rgba(85, 85, 99, 0.08); }
+    body[data-view="original"] .action-button { height: 29px; padding: 0 10px; border-radius: 8px; }
+    body[data-view="original"] .cancel-button { border: 0; background: rgba(255,255,255,.72); }
+    body[data-view="original"] .send-button { border: 0; color: #fff; background: #202127; box-shadow: none; }
+    body[data-view="original"] .send-button svg { display: none; }
+    body[data-view="original"] .status-note { margin-top: 10px; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; }
+  </style>
+</head>
+<body data-variant="focus" data-view="design">
+  <main class="app" aria-label="Codex 消息再编辑原型">
+    <header class="titlebar">
+      <div class="thread-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7h16v11H4z"/><path d="M8 7V5h8v2"/></svg>
+        <span>重构标准投放实体同步</span>
+      </div>
+      <div class="window-actions"><span>•••</span><span>⇧ 分享</span><span>☷</span></div>
+    </header>
+
+    <section class="workspace">
+      <div class="time">今天 11:11</div>
+
+      <div class="prototype-toolbar toolbar" aria-label="原型样式切换">
+        <span>编辑器方案</span>
+        <button class="mode-button active" data-mode="focus">聚焦浮光</button>
+        <button class="mode-button" data-mode="compact">紧凑内嵌</button>
+        <button class="mode-button" id="compareButton">查看原样</button>
+      </div>
+
+      <div class="editor-stage">
+        <section class="edit-card" aria-label="编辑消息">
+          <header class="editor-header">
+            <div class="edit-label">
+              <span class="pencil" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m14 5 5 5"/><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/></svg>
+              </span>
+              <span class="label-title">编辑消息</span>
+              <span class="label-subtitle">发送后将从此处继续对话</span>
+            </div>
+            <div class="edit-meta"><kbd>Esc</kbd><span>取消</span></div>
+          </header>
+
+          <div class="editor-body">
+            <textarea class="message-input" id="messageInput" spellcheck="false">目前系统中的处理方式好像就仅仅只是跳过了，这样其实挺好的，没有的就没有了。</textarea>
+          </div>
+
+          <footer class="editor-footer">
+            <div class="edit-hint">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+              <span>修改后会重新发送这条消息</span>
+              <span class="char-count" id="charCount"></span>
+            </div>
+            <div class="actions">
+              <button class="action-button cancel-button" id="cancelButton">取消</button>
+              <button class="action-button send-button" id="sendButton">
+                <span>发送</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+              </button>
+            </div>
+          </footer>
+        </section>
+
+        <div class="status-note">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M9 9h6v6H9z"/></svg>
+          <span>上一次生成在 0 秒后停止</span>
+        </div>
+      </div>
+
+      <div class="ghost-message">下方对话内容保持原样。编辑器只在“再编辑”状态出现，普通用户消息、主输入框和其他卡片不会继承这套样式。</div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast">原型交互演示，不会真正发送消息</div>
+
+  <script>
+    const body = document.body;
+    const input = document.querySelector("#messageInput");
+    const count = document.querySelector("#charCount");
+    const compare = document.querySelector("#compareButton");
+    const toast = document.querySelector("#toast");
+    let toastTimer;
+
+    function updateCount() {
+      count.textContent = `${input.value.length} 字`;
+    }
+
+    function showToast(message) {
+      toast.textContent = message;
+      toast.classList.add("visible");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove("visible"), 1700);
+    }
+
+    document.querySelectorAll("[data-mode]").forEach((button) => {
+      button.addEventListener("click", () => {
+        body.dataset.variant = button.dataset.mode;
+        body.dataset.view = "design";
+        compare.textContent = "查看原样";
+        compare.classList.remove("active");
+        document.querySelectorAll("[data-mode]").forEach((item) => item.classList.toggle("active", item === button));
+      });
+    });
+
+    compare.addEventListener("click", () => {
+      const original = body.dataset.view !== "original";
+      body.dataset.view = original ? "original" : "design";
+      compare.textContent = original ? "返回设计" : "查看原样";
+      compare.classList.toggle("active", original);
+    });
+
+    input.addEventListener("input", updateCount);
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        showToast("已模拟取消编辑");
+      }
+      if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        showToast("已模拟重新发送");
+      }
+    });
+
+    document.querySelector("#cancelButton").addEventListener("click", () => showToast("已模拟取消编辑"));
+    document.querySelector("#sendButton").addEventListener("click", () => showToast("原型不会真正发送消息"));
+    updateCount();
+  </script>
+</body>
+</html>
